@@ -57,6 +57,7 @@ export class Product {
   // just reference, this does not create a column
   @OneToMany(() => ProductImage, productImage => productImage.product, {
     cascade: true,
+    eager: true, // get assosiations when you use every find methods
   })
   images?: ProductImage[];
 

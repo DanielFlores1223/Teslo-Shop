@@ -11,6 +11,8 @@ import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { Product } from './entities/product.entity';
 import { validate as isUUID } from 'uuid';
+import { PaginationDto } from 'src/common/dtos/pagination.dto';
+import { ProductImage } from './entities';
 
 @Injectable()
 export class ProductsService {
@@ -19,25 +21,44 @@ export class ProductsService {
   constructor(
     @InjectRepository(Product)
     private readonly productRepository: Repository<Product>,
+
+    @InjectRepository(ProductImage)
+    private readonly productImageRepository: Repository<ProductImage>,
   ) {}
 
   async create(createProductDto: CreateProductDto) {
     try {
+      const { images = [], ...productDetails } = createProductDto;
       // crear instancia del producto con sus propiedades
-      const product = this.productRepository.create(createProductDto);
+      const product = this.productRepository.create({
+        ...productDetails,
+        // infiere que el id del producto, es el id que tiene las imagenes como referencia
+        images: images.map(url => this.productImageRepository.create({ url })),
+      });
 
       await this.productRepository.save(product);
 
-      return product;
+      return { ...product, images };
     } catch (error) {
       this.handleDDBExceptions(error);
     }
   }
 
-  async findAll() {
-    const [records = [], total = 0] =
-      await this.productRepository.findAndCount();
-    return { total, records };
+  async findAll(paginationDto: PaginationDto) {
+    const [records = [], total = 0] = await this.productRepository.findAndCount(
+      {
+        take: paginationDto.limit,
+        skip: paginationDto.offset,
+        relations: { images: true },
+      },
+    );
+    return {
+      total,
+      records: records.map(product => ({
+        ...product,
+        images: product.images.map(img => img.url),
+      })),
+    };
   }
 
   async findOne(term: string) {
@@ -64,6 +85,7 @@ export class ProductsService {
     const product = await this.productRepository.preload({
       id,
       ...updateProductDto,
+      images: [],
     });
 
     if (!product) throw new NotFoundException(`Product not found`);
